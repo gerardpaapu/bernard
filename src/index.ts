@@ -4,9 +4,8 @@ import './style.css';
 const canvas = document.createElement('canvas');
 canvas.width = 1024;
 canvas.height = 768;
-const appElement = document.querySelector<HTMLDivElement>('#app');
+const appElement = document.querySelector('#app');
 if (appElement) {
-  console.log('butts');
   appElement.append(canvas);
   init(canvas);
 } else {

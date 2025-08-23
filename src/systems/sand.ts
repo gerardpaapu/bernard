@@ -85,56 +85,62 @@ function updateSand(state: Uint8Array, nextState: Uint8Array): boolean {
   let changed = false;
 
   // Update the state of the application
-  for (let y = 0; y < HEIGHT; y++) {
+  for (let y = HEIGHT - 1; y >= 0; y--) {
     for (let x = 0; x < WIDTH; x++) {
-      const S = state[y * WIDTH + x];
-      if (!S) {
+      const up = y > 0 ? state[(y - 1) * WIDTH + x] : 0;
+      const left = x > 0 ? state[y * WIDTH + (x - 1)] : 1;
+      const middle = state[y * WIDTH + x];
+      const right = x < WIDTH - 1 ? state[y * WIDTH + (x + 1)] : 1;
+
+      if (!up) {
+        // there's no sand above us
         continue;
       }
 
-      const left =
-        y < HEIGHT - 1 && x > 0 ? state[(y + 1) * WIDTH + (x - 1)] : 1;
-      const middle = y < HEIGHT - 1 ? state[(y + 1) * WIDTH + x] : 1;
-      const right =
-        y < HEIGHT - 1 && x < WIDTH - 1 ? state[(y + 1) * WIDTH + (x + 1)] : 1;
-
       if (left && middle && right) {
-        // we're sand but we can't fall - stay in place
-        nextState[y * WIDTH + x] = 255;
+        // there's sand above us but it can't move
         continue;
       }
 
       changed = true;
       // we're sand and we're falling straight down
       if (!middle) {
-        nextState[(y + 1) * WIDTH + x] = 255;
+        state[(y - 1) * WIDTH + x] = 0;
+
+        state[y * WIDTH + x] = 255;
         continue;
       }
 
-      if (!(left || right)) {
-        if (Math.random() < 0.5) {
-          nextState[(y + 1) * WIDTH + (x - 1)] = 255;
-        } else {
-          nextState[(y + 1) * WIDTH + (x + 1)] = 255;
+      // TODO: There's a left-right bias here
+      if (x % 2) {
+        if (!right) {
+          state[(y - 1) * WIDTH + x] = 0;
+          state[y * WIDTH + (x + 1)] = 255;
+          continue;
         }
-        continue;
+        // we're sand and we're falling left
+        if (!left) {
+          state[(y - 1) * WIDTH + x] = 0;
+          state[y * WIDTH + (x - 1)] = 255;
+          continue;
+        }
+      } else {
+        if (!left) {
+          state[(y - 1) * WIDTH + x] = 0;
+          state[y * WIDTH + (x - 1)] = 255;
+          continue;
+        }
+        if (!right) {
+          state[(y - 1) * WIDTH + x] = 0;
+          state[y * WIDTH + (x + 1)] = 255;
+          continue;
+        }
       }
-
-      // we're sand and we're falling left
-      if (!left) {
-        nextState[(y + 1) * WIDTH + (x - 1)] = 255;
-        continue;
-      }
-
       // we're sand and we're falling right
-      if (!right) {
-        nextState[(y + 1) * WIDTH + (x + 1)] = 255;
-        continue;
-      }
     }
   }
   // Copy nextState back to state
-  state.set(nextState);
+
   return changed;
 }
 
@@ -158,7 +164,7 @@ function initialiseSand(state: Uint8Array) {
       const index = y * WIDTH + x;
       // Initialize the state with a sine wave pattern
       state[index] =
-        Math.random() < 0.98 && (y * 4) / HEIGHT > heights[x] ? 255 : 0;
+        Math.random() < 0.6 && (y * 4) / HEIGHT > heights[x] ? 255 : 0;
     }
   }
 }
