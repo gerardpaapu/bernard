@@ -1,8 +1,147 @@
-import { init } from "./init";
-import "./style.css";
+import { type SimulationState, DEBUG, WIDTH, HEIGHT } from './types';
+import * as Sand from './systems/sand';
+import * as Missiles from './systems/missiles';
+import * as Explosions from './systems/explosions';
+import * as Wind from './systems/wind';
+import './style.css';
 
-const canvas = document.createElement("canvas");
-canvas.width = 1024;
-canvas.height = 768;
-document.querySelector<HTMLDivElement>("#app")!.append(canvas);
-init(canvas);
+const FRAME_RATE = 60;
+/**
+ * Initialize the simulation
+ */
+export function init(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Unable to get 2D rendering context');
+  }
+
+  // Initialize simulation state
+  const simState: SimulationState = {
+    phase: 'sand',
+    missiles: [],
+    explosions: [],
+    explosionDuration: 0,
+    wind: 0, // Start with no wind
+    sand: new Uint8Array(WIDTH * HEIGHT),
+    nextSand: new Uint8Array(WIDTH * HEIGHT),
+  };
+
+  // Initialize each system
+  Sand.init(simState);
+  Missiles.init(simState);
+  Explosions.init(simState);
+  Wind.init(simState);
+
+  let token: number | undefined;
+  function resume() {
+    if (token != undefined) {
+      clearInterval(token);
+    }
+
+    token = setInterval(() => {
+      updateSimulation(simState);
+    }, 1000 / FRAME_RATE);
+  }
+
+  const renderLoop = () => {
+    render(simState, ctx);
+    requestAnimationFrame(renderLoop);
+  };
+  requestAnimationFrame(renderLoop);
+  resume();
+}
+
+/**
+ * Main simulation update function - manages the phase-based system
+ */
+function updateSimulation(simState: SimulationState): void {
+  switch (simState.phase) {
+    case 'missiles':
+      // Simulate missile physics and check for collisions
+      const collisionDetected = Missiles.update(simState);
+
+      // If there was a collision or no missiles left, move to next phase
+      if (collisionDetected) {
+        simState.phase = 'explosions';
+        simState.explosionDuration = 30; // Show explosions for 30 frames (about 0.5 seconds at 60fps)
+      } else if (simState.missiles.length === 0) {
+        simState.phase = 'sand';
+      }
+      break;
+
+    case 'explosions':
+      // Process explosions
+      Explosions.update(simState);
+
+      // Count down explosion duration
+      simState.explosionDuration--;
+
+      // When explosion duration is complete, move to sand phase
+      if (simState.explosionDuration <= 0) {
+        simState.phase = 'sand';
+        // Clear explosions after they're done
+        simState.explosions = [];
+      }
+      break;
+
+    case 'sand':
+      const sandMoved = Sand.update(simState);
+      if (!sandMoved) {
+        // Sand has settled
+        // If there are no missiles, go back to idle phase
+        if (simState.missiles.length === 0) {
+          simState.phase = 'idle';
+        } else {
+          simState.phase = 'missiles';
+        }
+      }
+      break;
+
+    case 'idle':
+      // Generate random missiles and transition to missile phase
+      Missiles.generateRandomMissiles(simState);
+      if (simState.missiles.length > 0) {
+        simState.phase = 'missiles';
+      }
+      break;
+  }
+}
+
+/**
+ * Render the simulation to the canvas
+ */
+function render(
+  simState: SimulationState,
+  ctx: CanvasRenderingContext2D
+): void {
+  // Clear the canvas
+  ctx.clearRect(0, 0, WIDTH * 2, HEIGHT * 2);
+
+  // Render each system
+  Sand.render(simState, ctx);
+  Wind.render(simState, ctx);
+  Missiles.render(simState, ctx);
+  Explosions.render(simState, ctx);
+
+  // Draw phase indicator for debugging
+  if (DEBUG) {
+    ctx.save();
+    ctx.scale(2, 2);
+    ctx.fillStyle = 'white';
+    ctx.font = '12px Arial';
+    ctx.fillText(`Phase: ${simState.phase}`, 10, 20);
+    ctx.fillText(`Missiles: ${simState.missiles.length}`, 10, 40);
+    // Display wind strength with direction indicator
+    const windDirection =
+      simState.wind > 0 ? '→' : simState.wind < 0 ? '←' : '-';
+    ctx.fillText(
+      `Wind: ${windDirection} ${Math.abs(simState.wind).toFixed(3)}`,
+      10,
+      60
+    );
+    if (simState.phase === 'explosions') {
+      ctx.fillText(`Explosion Time: ${simState.explosionDuration}`, 10, 80);
+    }
+    ctx.restore();
+  }
+}
