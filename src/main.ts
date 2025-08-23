@@ -23,7 +23,6 @@ export function init(canvas: HTMLCanvasElement): void {
     explosionDuration: 0,
     wind: 0, // Start with no wind
     sand: new Uint8Array(WIDTH * HEIGHT),
-    nextSand: new Uint8Array(WIDTH * HEIGHT),
   };
 
   // Initialize each system

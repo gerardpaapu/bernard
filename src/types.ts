@@ -27,5 +27,4 @@ export interface SimulationState {
   explosionDuration: number; // Number of frames to show the explosion
   wind: number; // Wind strength (positive = right, negative = left)
   sand: Uint8Array;
-  nextSand: Uint8Array;
 }

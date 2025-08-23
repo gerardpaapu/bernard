@@ -32,7 +32,7 @@ export function init(state: SimulationState): void {
  * Returns true if any sand moved, false if settled
  */
 export function update(state: SimulationState): boolean {
-  return updateSand(state.sand, state.nextSand);
+  return updateSand(state.sand);
 }
 
 /**
@@ -78,10 +78,7 @@ export function render(
 /**
  * Update the sand simulation by applying gravity rules
  */
-function updateSand(state: Uint8Array, nextState: Uint8Array): boolean {
-  // Clear the next state buffer
-  nextState.fill(0);
-
+function updateSand(state: Uint8Array): boolean {
   let changed = false;
 
   // Update the state of the application
@@ -106,40 +103,34 @@ function updateSand(state: Uint8Array, nextState: Uint8Array): boolean {
       // we're sand and we're falling straight down
       if (!middle) {
         state[(y - 1) * WIDTH + x] = 0;
-
         state[y * WIDTH + x] = 255;
         continue;
       }
 
-      // TODO: There's a left-right bias here
-      if (x % 2) {
-        if (!right) {
-          state[(y - 1) * WIDTH + x] = 0;
-          state[y * WIDTH + (x + 1)] = 255;
-          continue;
-        }
-        // we're sand and we're falling left
-        if (!left) {
-          state[(y - 1) * WIDTH + x] = 0;
+      if (!(left || right)) {
+        state[(y - 1) * WIDTH + x] = 0;
+        if (x % 2 !== 0) {
           state[y * WIDTH + (x - 1)] = 255;
-          continue;
-        }
-      } else {
-        if (!left) {
-          state[(y - 1) * WIDTH + x] = 0;
-          state[y * WIDTH + (x - 1)] = 255;
-          continue;
-        }
-        if (!right) {
-          state[(y - 1) * WIDTH + x] = 0;
+          x -= 2;
+        } else {
           state[y * WIDTH + (x + 1)] = 255;
-          continue;
         }
+        continue;
       }
-      // we're sand and we're falling right
+      // we're sand and we're falling left
+      if (!left) {
+        state[(y - 1) * WIDTH + x] = 0;
+        state[y * WIDTH + (x - 1)] = 255;
+        x -= 2;
+        continue;
+      }
+      if (!right) {
+        state[(y - 1) * WIDTH + x] = 0;
+        state[y * WIDTH + (x + 1)] = 255;
+        continue;
+      }
     }
   }
-  // Copy nextState back to state
 
   return changed;
 }
