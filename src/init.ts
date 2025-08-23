@@ -1,5 +1,6 @@
 const WIDTH = 1024 / 2;
 const HEIGHT = 768 / 2;
+const DEBUG = false; // Set to true to show debug information
 
 // Simulation phases
 type SimulationPhase = 'missiles' | 'explosions' | 'sand' | 'idle';
@@ -17,6 +18,7 @@ interface SimulationState {
   missiles: Array<Missile>;
   explosions: Array<{ x: number; y: number; radius: number }>;
   explosionDuration: number; // Number of frames to show the explosion
+  wind: number; // Wind strength (positive = right, negative = left)
   sand: Uint8Array;
   nextSand: Uint8Array;
 }
@@ -33,6 +35,7 @@ export function init(canvas: HTMLCanvasElement) {
     missiles: [],
     explosions: [],
     explosionDuration: 0,
+    wind: 0, // Start with no wind
     sand: new Uint8Array(WIDTH * HEIGHT),
     nextSand: new Uint8Array(WIDTH * HEIGHT),
   };
@@ -181,6 +184,9 @@ function generateRandomMissiles(simState: SimulationState) {
   // Clear any existing missiles
   simState.missiles = [];
 
+  // Generate random wind
+  simState.wind = (Math.random() - 0.5) * 0.2; // Wind strength from -0.1 to 0.1 pixels per frame
+
   // Decide on the number of missiles to generate (1-3 missiles)
   const missileCount = Math.floor(Math.random() * 3) + 1;
 
@@ -215,9 +221,17 @@ function updateMissiles(simState: SimulationState): boolean {
     [];
 
   // Update each missile's position using Newtonian physics
-  simState.missiles = simState.missiles.filter((missile) => {
+  for (let i = simState.missiles.length - 1; i >= 0; i--) {
+    const missile = simState.missiles[i];
+    // Store previous position before updating
+    const prevX = missile.x;
+    const prevY = missile.y;
+
     // Apply gravity
     missile.vy += gravity;
+
+    // Apply wind effect to the horizontal velocity
+    missile.vx += simState.wind;
 
     // Update position
     missile.x += missile.vx;
@@ -225,33 +239,101 @@ function updateMissiles(simState: SimulationState): boolean {
 
     // Check for out of bounds
     if (missile.x < 0 || missile.x >= WIDTH || missile.y >= HEIGHT) {
-      return false; // Remove missile if it goes out of bounds
+      simState.missiles.splice(i, 1);
+      continue;
     }
 
-    // Check for collision with sand
-    const sandIndex = Math.floor(missile.y) * WIDTH + Math.floor(missile.x);
-    if (
-      sandIndex >= 0 &&
-      sandIndex < simState.sand.length &&
-      simState.sand[sandIndex] > 0
-    ) {
+    // Check for collision with sand using ray casting (Bresenham's line algorithm)
+    // This prevents tunneling by checking all sand pixels along the missile's path
+    const collision = checkLineCollision(
+      prevX,
+      prevY,
+      missile.x,
+      missile.y,
+      simState.sand
+    );
+
+    if (collision) {
       // Collision detected!
       explosionsToCreate.push({
-        x: missile.x,
-        y: missile.y,
+        x: collision.x,
+        y: collision.y,
         radius: missile.explosionRadius,
       });
       collisionDetected = true;
-      return false; // Remove this missile
+      // Remove the missile from the simulation state
+      simState.missiles.splice(i, 1);
     }
-
-    return true; // Keep this missile
-  });
+  }
 
   // Add any explosions from collisions
   simState.explosions = explosionsToCreate;
 
   return collisionDetected;
+}
+
+// Function to check for collisions along a line using Bresenham's line algorithm
+// Returns the coordinates of the first collision point or null if no collision
+function checkLineCollision(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  sand: Uint8Array
+): { x: number; y: number } | null {
+  // Convert to integers for grid-based collision detection
+  const startX = Math.floor(x0);
+  const startY = Math.floor(y0);
+  const endX = Math.floor(x1);
+  const endY = Math.floor(y1);
+
+  // If start point is already colliding, return immediately
+  const startIndex = startY * WIDTH + startX;
+  if (startIndex >= 0 && startIndex < sand.length && sand[startIndex] > 0) {
+    return { x: x0, y: y0 };
+  }
+
+  // Calculate deltas and steps
+  const dx = Math.abs(endX - startX);
+  const dy = Math.abs(endY - startY);
+  const sx = startX < endX ? 1 : -1;
+  const sy = startY < endY ? 1 : -1;
+  let err = dx - dy;
+
+  // Current position
+  let x = startX;
+  let y = startY;
+
+  // Traverse the line
+  while (x !== endX || y !== endY) {
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+
+    // Check if we're out of bounds
+    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+      break;
+    }
+
+    // Check if this point contains sand
+    const index = y * WIDTH + x;
+    if (index >= 0 && index < sand.length && sand[index] > 0) {
+      // Calculate the exact collision point (interpolate between grid cells)
+      // This is optional but makes explosions look better by putting them at the exact collision point
+      const collisionX = x + 0.5; // center of the grid cell
+      const collisionY = y + 0.5;
+      return { x: collisionX, y: collisionY };
+    }
+  }
+
+  // No collision found
+  return null;
 }
 
 // Function to process explosions and remove sand within the explosion radius
@@ -305,7 +387,7 @@ function initialiseSand(state: Uint8Array) {
       const index = y * WIDTH + x;
       // Initialize the state with a sine wave pattern
       state[index] =
-        Math.random() > 0.4 && (y * 7) / HEIGHT > heights[x] ? 255 : 0;
+        Math.random() < 0.98 && (y * 4) / HEIGHT > heights[x] ? 255 : 0;
     }
   }
 }
@@ -332,6 +414,45 @@ function render(simState: SimulationState, ctx: CanvasRenderingContext2D) {
   }
   ctx.putImageData(imageData, 0, 0);
 
+  // Draw wind indicator as a triangle in the top right
+  if (simState.wind !== 0) {
+    const maxTriangleSize = 20; // Maximum triangle size
+    const triangleSize = Math.min(
+      maxTriangleSize,
+      Math.abs(simState.wind) * 200
+    );
+
+    // Scale wind for visual effect
+    const windDirection = simState.wind > 0 ? 1 : -1; // 1 = right, -1 = left
+
+    ctx.save();
+    ctx.scale(2, 2); // Scale to match the sand rendering
+
+    // Position in top right corner with some padding
+    const triangleX = WIDTH - 30;
+    const triangleY = 30;
+
+    // Draw triangle pointing in wind direction
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.beginPath();
+
+    if (windDirection > 0) {
+      // Wind blowing right - triangle points right
+      ctx.moveTo(triangleX, triangleY - triangleSize / 2); // Top point
+      ctx.lineTo(triangleX, triangleY + triangleSize / 2); // Bottom point
+      ctx.lineTo(triangleX + triangleSize, triangleY); // Right point
+    } else {
+      // Wind blowing left - triangle points left
+      ctx.moveTo(triangleX, triangleY - triangleSize / 2); // Top point
+      ctx.lineTo(triangleX, triangleY + triangleSize / 2); // Bottom point
+      ctx.lineTo(triangleX - triangleSize, triangleY); // Left point
+    }
+
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
   // Render missiles
   ctx.save();
   ctx.scale(2, 2); // Scale to match the sand rendering
@@ -342,19 +463,26 @@ function render(simState: SimulationState, ctx: CanvasRenderingContext2D) {
     // Larger radius (50) -> blue (240)
     const minRadius = 20;
     const maxRadius = 50;
-    const hue = 240 - Math.min(240, Math.max(0, 
-      240 * (missile.explosionRadius - minRadius) / (maxRadius - minRadius)
-    ));
-    
+    const hue =
+      240 -
+      Math.min(
+        240,
+        Math.max(
+          0,
+          (240 * (missile.explosionRadius - minRadius)) /
+            (maxRadius - minRadius)
+        )
+      );
+
     // Calculate a size that slightly increases with explosion radius
     const missileSize = 2 + (missile.explosionRadius / 50) * 3;
-    
+
     // Draw missile with color based on explosion radius
     ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
     ctx.beginPath();
     ctx.arc(missile.x, missile.y, missileSize, 0, Math.PI * 2);
     ctx.fill();
-    
+
     // Add a slight glow effect that matches the missile color
     ctx.fillStyle = `hsla(${hue}, 100%, 70%, 0.3)`;
     ctx.beginPath();
@@ -426,12 +554,22 @@ function render(simState: SimulationState, ctx: CanvasRenderingContext2D) {
   }
 
   // Draw phase indicator for debugging
-  ctx.fillStyle = 'white';
-  ctx.font = '12px Arial';
-  ctx.fillText(`Phase: ${simState.phase}`, 10, 20);
-  ctx.fillText(`Missiles: ${missiles.length}`, 10, 40);
-  if (simState.phase === 'explosions') {
-    ctx.fillText(`Explosion Time: ${simState.explosionDuration}`, 10, 60);
+  if (DEBUG) {
+    ctx.fillStyle = 'white';
+    ctx.font = '12px Arial';
+    ctx.fillText(`Phase: ${simState.phase}`, 10, 20);
+    ctx.fillText(`Missiles: ${missiles.length}`, 10, 40);
+    // Display wind strength with direction indicator
+    const windDirection =
+      simState.wind > 0 ? '→' : simState.wind < 0 ? '←' : '-';
+    ctx.fillText(
+      `Wind: ${windDirection} ${Math.abs(simState.wind).toFixed(3)}`,
+      10,
+      60
+    );
+    if (simState.phase === 'explosions') {
+      ctx.fillText(`Explosion Time: ${simState.explosionDuration}`, 10, 80);
+    }
   }
 
   ctx.restore();
