@@ -2,7 +2,7 @@ import { type SimulationState, WIDTH, HEIGHT } from '../types';
 
 // Constants
 const TANK_RADIUS = 10;
-const TANK_GRAVITY = 0.8; // Increased from 0.1 for faster falling
+const TANK_GRAVITY = 1.2;
 const TURRET_LENGTH = 15;
 
 // Create a tank system
@@ -115,8 +115,8 @@ function updateTanks(state: SimulationState): boolean {
       // Tank has landed on sand - apply fall damage
       if (tank.fallDistance > 0) {
         if (!tank.firstDrop) {
-          const fallDamage = tank.fallDistance * 0.8; // Quarter the fall distance as damage
-          tank.health = Math.max(0, tank.health - fallDamage);
+          const fallDamage = tank.fallDistance * 0.8;
+          tank.health = Math.floor(Math.max(0, tank.health - fallDamage));
         }
         tank.fallDistance = 0;
         tank.firstDrop = false;

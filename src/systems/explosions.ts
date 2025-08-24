@@ -135,7 +135,7 @@ function processExplosions(state: SimulationState): void {
         const damage = maxDamage * damageRatio;
 
         // Apply damage to tank
-        tank.health = Math.max(0, tank.health - damage);
+        tank.health = Math.floor(Math.max(0, tank.health - damage));
       }
     }
   }
