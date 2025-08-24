@@ -153,7 +153,6 @@ export function fireMissileFromTank(
     return; // Invalid tank index
   }
   const tank = state.tanks[tankIndex];
-  tank.angle = Math.random() * Math.PI + Math.PI; // Randomize angle for the tank
   const angle = tank.angle;
 
   // Calculate the initial position of the missile (just outside the tank's radius)
@@ -165,7 +164,7 @@ export function fireMissileFromTank(
   const missileY = tank.y + Math.sin(angle) * (turretLength + 2);
 
   // Calculate the initial velocity components
-  const missileSpeed = 5.0; // Base missile speed
+  const missileSpeed = (10 * tank.power) / 100; // Base missile speed
   const vx = Math.cos(angle) * missileSpeed;
   const vy = Math.sin(angle) * missileSpeed;
 
@@ -213,14 +212,14 @@ function updateMissiles(state: SimulationState): boolean {
       continue;
     }
 
-    // Check for collision with sand using ray casting (Bresenham's line algorithm)
-    // This prevents tunneling by checking all sand pixels along the missile's path
+    // Check for collision with sand and tanks using ray casting (Bresenham's line algorithm)
+    // This prevents tunneling by checking all sand pixels and tanks along the missile's path
     const collision = checkLineCollision(
       prevX,
       prevY,
       missile.x,
       missile.y,
-      state.sand
+      state
     );
 
     if (collision) {

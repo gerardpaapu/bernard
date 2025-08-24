@@ -9,6 +9,8 @@ export type SimulationPhase =
   | 'explosions'
   | 'sand'
   | 'tanks'
+  | 'control'
+  | 'gameover'
   | 'idle';
 
 export interface Missile {
@@ -29,7 +31,11 @@ export interface Tank {
   x: number; // X position
   y: number; // Y position (starts negative, above the visible area)
   angle: number; // Angle in radians that the turret is pointing
+  power: number; // how far it will shoot
+  health: number; // 100 = full health, 0 = dead
+  fallDistance: number; // used during falling to calculate damage
   color: string; // CSS color string for the tank
+  firstDrop: boolean; // Indicates if this is the tank's first drop
 }
 
 export interface SimulationState {

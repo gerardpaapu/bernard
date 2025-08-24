@@ -114,4 +114,29 @@ function processExplosions(state: SimulationState): void {
       }
     }
   }
+
+  // Check for tank damage from explosions
+  for (const explosion of state.explosions) {
+    const { x, y, radius } = explosion;
+
+    // Check each tank for damage
+    for (const tank of state.tanks) {
+      // Calculate distance from tank center to explosion center
+      const dx = tank.x - x;
+      const dy = tank.y - y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      // If tank is within explosion radius, apply damage
+      if (distance <= radius) {
+        // Calculate damage based on distance from explosion center
+        // Closer to center = more damage, further away = less damage
+        const maxDamage = 50; // Maximum damage at explosion center
+        const damageRatio = 1 - distance / radius; // 1.0 at center, 0.0 at edge
+        const damage = maxDamage * damageRatio;
+
+        // Apply damage to tank
+        tank.health = Math.max(0, tank.health - damage);
+      }
+    }
+  }
 }

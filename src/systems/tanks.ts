@@ -65,6 +65,10 @@ function generateRandomTanks(state: SimulationState): void {
       y,
       angle,
       color,
+      fallDistance: 0,
+      firstDrop: true,
+      health: 100,
+      power: 100,
     });
   }
 }
@@ -74,7 +78,7 @@ function generateRandomTanks(state: SimulationState): void {
  * Returns true if all tanks are on sand, false if any are still falling
  */
 function updateTanks(state: SimulationState): boolean {
-  let allTanksOnSand = true;
+  let allTanksAreGrounded = true;
 
   for (const tank of state.tanks) {
     // Check if tank is directly above sand
@@ -83,7 +87,7 @@ function updateTanks(state: SimulationState): boolean {
     const tankRight = Math.floor(tank.x + TANK_RADIUS);
 
     // Check if there's sand below the tank
-    let onSand = false;
+    let grounded = false;
     // Check center point of tank bottom for sand collision
     const tankCenterX = Math.floor(tank.x);
     if (
@@ -94,45 +98,59 @@ function updateTanks(state: SimulationState): boolean {
     ) {
       const index = tankBottom * WIDTH + tankCenterX;
       if (state.sand[index]) {
-        onSand = true;
+        grounded = true;
       }
     }
 
-    if (!onSand) {
+    if (tankBottom >= HEIGHT) {
+      grounded = true;
+    }
+
+    if (!grounded) {
       // Tank is not on sand, apply gravity
       tank.y += TANK_GRAVITY;
-      allTanksOnSand = false;
+      tank.fallDistance += TANK_GRAVITY; // Track how far the tank has fallen
+      allTanksAreGrounded = false;
     } else {
-      // Position tank precisely on top of sand
-      // Find the highest sand point under the tank
-      let highestSandY = HEIGHT;
+      // Tank has landed on sand - apply fall damage
+      if (tank.fallDistance > 0) {
+        if (!tank.firstDrop) {
+          const fallDamage = tank.fallDistance * 0.8; // Quarter the fall distance as damage
+          tank.health = Math.max(0, tank.health - fallDamage);
+        }
+        tank.fallDistance = 0;
+        tank.firstDrop = false;
 
-      for (let x = tankLeft; x <= tankRight; x++) {
-        if (x >= 0 && x < WIDTH) {
-          // Search upward from the bottom of the tank to find sand
-          for (let y = tankBottom; y >= 0; y--) {
-            const index = y * WIDTH + x;
-            if (state.sand[index]) {
-              highestSandY = Math.min(highestSandY, y);
-              break;
+        // Position tank precisely on top of sand
+        // Find the highest sand point under the tank
+        let highestSandY = HEIGHT;
+
+        for (let x = tankLeft; x <= tankRight; x++) {
+          if (x >= 0 && x < WIDTH) {
+            // Search upward from the bottom of the tank to find sand
+            for (let y = tankBottom; y >= 0; y--) {
+              const index = y * WIDTH + x;
+              if (state.sand[index]) {
+                highestSandY = Math.min(highestSandY, y);
+                break;
+              }
             }
           }
         }
+
+        // Position the tank so it's sitting exactly on the sand
+        if (highestSandY < HEIGHT) {
+          tank.y = highestSandY - TANK_RADIUS;
+        }
       }
 
-      // Position the tank so it's sitting exactly on the sand
-      if (highestSandY < HEIGHT) {
-        tank.y = highestSandY - TANK_RADIUS;
+      // Check if tank is sitting on the bottom
+      if (tank.y + TANK_RADIUS > HEIGHT) {
+        tank.y = HEIGHT - TANK_RADIUS;
       }
-    }
-
-    // Check if tank is sitting on the bottom
-    if (tank.y + TANK_RADIUS > HEIGHT) {
-      tank.y = HEIGHT - TANK_RADIUS;
     }
   }
-
-  return allTanksOnSand;
+  return allTanksAreGrounded;
 }
 
 /**
@@ -144,19 +162,23 @@ function renderTanks(
 ): void {
   ctx.save();
   ctx.scale(2, 2); // Scale to match the sand rendering
+  ctx.imageSmoothingEnabled = false;
 
   for (let i = 0; i < state.tanks.length; i++) {
     const tank = state.tanks[i];
     const isCurrentTank = i === state.currentTankIndex;
 
+    // Use dark grey for dead tanks, original color for alive tanks
+    const tankColor = tank.health <= 0 ? '#404040' : tank.color;
+
     // Draw tank body (semi-circle)
-    ctx.fillStyle = tank.color;
+    ctx.fillStyle = tankColor;
     ctx.beginPath();
     ctx.arc(tank.x, tank.y, TANK_RADIUS, 0, Math.PI, true);
     ctx.fill();
 
     // Draw tank turret (line)
-    ctx.strokeStyle = tank.color;
+    ctx.strokeStyle = tankColor;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(
@@ -174,9 +196,9 @@ function renderTanks(
       // Draw an arrow or indicator above the current tank
       ctx.fillStyle = 'white';
       ctx.beginPath();
-      ctx.moveTo(tank.x, tank.y - TANK_RADIUS - 10);
-      ctx.lineTo(tank.x - 5, tank.y - TANK_RADIUS - 5);
-      ctx.lineTo(tank.x + 5, tank.y - TANK_RADIUS - 5);
+      ctx.moveTo(tank.x, tank.y - TANK_RADIUS - 5);
+      ctx.lineTo(tank.x - 5, tank.y - TANK_RADIUS - 10);
+      ctx.lineTo(tank.x + 5, tank.y - TANK_RADIUS - 10);
       ctx.fill();
     }
   }

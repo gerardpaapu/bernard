@@ -146,14 +146,14 @@ function initialiseSand(state: Uint8Array) {
     heights[x] += 0.2 * sin(x * 13);
     heights[x] += 1.7;
     heights[x] /= 3;
+    heights[x] *= (2 + Math.random()) / 3;
   }
 
   for (let y = 0; y < HEIGHT; y++) {
     for (let x = 0; x < WIDTH; x++) {
       const index = y * WIDTH + x;
       // Initialize the state with a sine wave pattern
-      state[index] =
-        Math.random() < 0.6 && (y * 4) / HEIGHT > heights[x] ? 255 : 0;
+      state[index] = y / HEIGHT > heights[x] ? 255 : 0;
     }
   }
 }

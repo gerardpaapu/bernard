@@ -4,9 +4,25 @@ import * as Missiles from './systems/missiles';
 import * as Explosions from './systems/explosions';
 import * as Wind from './systems/wind';
 import * as Tanks from './systems/tanks';
+import * as HUD from './systems/hud';
 import './style.css';
 
 const FRAME_RATE = 60;
+
+// Keyboard state tracking
+const keys = {
+  left: false,
+  right: false,
+  up: false,
+  down: false,
+  space: false,
+};
+
+// Track key press events (for single press detection)
+const keyPressed = {
+  space: false,
+};
+
 /**
  * Initialize the simulation
  */
@@ -33,6 +49,10 @@ export function init(canvas: HTMLCanvasElement): void {
   Explosions.init(simState);
   Wind.init(simState);
   Tanks.init(simState);
+  HUD.init(simState);
+
+  // Set up keyboard event listeners
+  setupKeyboardListeners();
 
   let token: number | undefined;
   function resume() {
@@ -51,6 +71,61 @@ export function init(canvas: HTMLCanvasElement): void {
   };
   requestAnimationFrame(renderLoop);
   resume();
+}
+
+/**
+ * Set up keyboard event listeners for tank control
+ */
+function setupKeyboardListeners(): void {
+  // Handle keydown events
+  document.addEventListener('keydown', (event) => {
+    switch (event.code) {
+      case 'ArrowLeft':
+        keys.left = true;
+        event.preventDefault();
+        break;
+      case 'ArrowRight':
+        keys.right = true;
+        event.preventDefault();
+        break;
+      case 'ArrowUp':
+        keys.up = true;
+        event.preventDefault();
+        break;
+      case 'ArrowDown':
+        keys.down = true;
+        event.preventDefault();
+        break;
+      case 'Space':
+        if (!keys.space) {
+          keyPressed.space = true;
+        }
+        keys.space = true;
+        event.preventDefault();
+        break;
+    }
+  });
+
+  // Handle keyup events
+  document.addEventListener('keyup', (event) => {
+    switch (event.code) {
+      case 'ArrowLeft':
+        keys.left = false;
+        break;
+      case 'ArrowRight':
+        keys.right = false;
+        break;
+      case 'ArrowUp':
+        keys.up = false;
+        break;
+      case 'ArrowDown':
+        keys.down = false;
+        break;
+      case 'Space':
+        keys.space = false;
+        break;
+    }
+  });
 }
 
 /**
@@ -111,21 +186,42 @@ function updateSimulation(simState: SimulationState): void {
     case 'tanks':
       // Update tank positions and check for collisions
       const allTanksOnSand = Tanks.update(simState);
-      // Only move to missiles phase when all tanks have landed on sand
+      // Only move to control phase when all tanks have landed on sand
       if (allTanksOnSand) {
-        // Fire a missile from the current tank
-        if (simState.currentTankIndex !== undefined) {
-          Missiles.fireMissileFromTank(simState, simState.currentTankIndex);
-
-          // Move to the missiles phase
-          simState.phase = 'missiles';
-
-          // After missile phase completes, advance to next tank's turn
-          // This happens in the missiles phase completion
+        // Make sure we have a valid current tank that's alive
+        if (
+          simState.currentTankIndex !== undefined &&
+          simState.tanks[simState.currentTankIndex] &&
+          simState.tanks[simState.currentTankIndex].health > 0
+        ) {
+          // Move to the control phase to let player aim the current tank
+          simState.phase = 'control';
+        } else {
+          // Current tank is dead, advance to next alive tank
+          simState.currentTankIndex = findNextAliveTank(
+            simState,
+            simState.currentTankIndex ?? -1
+          );
+          if (simState.currentTankIndex !== undefined) {
+            simState.phase = 'control';
+          }
+          // If no alive tanks, game over check will handle it
         }
       }
       break;
+
+    case 'control':
+      // Handle tank control phase
+      updateTankControl(simState);
+      break;
+
+    case 'gameover':
+      // Game over - do nothing, just display the results
+      break;
   }
+
+  // Check for game over condition after each update
+  checkGameOverCondition(simState);
 }
 
 /**
@@ -136,15 +232,119 @@ function advanceToNextTankTurn(simState: SimulationState): void {
     return; // No tanks to advance
   }
 
-  // If no current tank index is set, start with the first tank
+  // If no current tank index is set, start with the first alive tank
   if (simState.currentTankIndex === undefined) {
-    simState.currentTankIndex = 0;
+    simState.currentTankIndex = findNextAliveTank(simState, -1);
     return;
   }
 
-  // Advance to the next tank (with wrap-around)
-  simState.currentTankIndex =
-    (simState.currentTankIndex + 1) % simState.tanks.length;
+  // Advance to the next alive tank (with wrap-around)
+  simState.currentTankIndex = findNextAliveTank(
+    simState,
+    simState.currentTankIndex
+  );
+}
+
+/**
+ * Find the next tank with health > 0, starting from the given index
+ */
+function findNextAliveTank(
+  simState: SimulationState,
+  startIndex: number
+): number | undefined {
+  const aliveTanks = simState.tanks.filter((tank) => tank.health > 0);
+  if (aliveTanks.length === 0) {
+    return undefined;
+  }
+
+  // Find the next alive tank starting from startIndex + 1
+  for (let i = 1; i <= simState.tanks.length; i++) {
+    const nextIndex = (startIndex + i) % simState.tanks.length;
+    if (simState.tanks[nextIndex].health > 0) {
+      return nextIndex;
+    }
+  }
+
+  return undefined; // This should never happen if aliveTanks.length > 0
+}
+
+/**
+ * Check if the game should end and transition to game over state
+ */
+function checkGameOverCondition(simState: SimulationState): void {
+  // Don't check for game over if we're already in game over state
+  if (simState.phase === 'gameover') {
+    return;
+  }
+
+  // Count tanks with health > 0
+  const aliveTanks = simState.tanks.filter((tank) => tank.health > 0);
+
+  // Game over conditions:
+  // 1. No tanks have health remaining (stalemate)
+  // 2. Only one tank has health remaining (winner)
+  if (aliveTanks.length <= 1) {
+    simState.phase = 'gameover';
+
+    // Set the current tank index to the winner (if any)
+    if (aliveTanks.length === 1) {
+      const winnerIndex = simState.tanks.findIndex((tank) => tank.health > 0);
+      simState.currentTankIndex = winnerIndex;
+    } else {
+      // Stalemate - no winner
+      simState.currentTankIndex = undefined;
+    }
+  }
+}
+
+/**
+ * Update tank control phase - handle player input for aiming
+ */
+function updateTankControl(simState: SimulationState): void {
+  if (
+    simState.currentTankIndex === undefined ||
+    !simState.tanks[simState.currentTankIndex]
+  ) {
+    return;
+  }
+
+  const currentTank = simState.tanks[simState.currentTankIndex];
+  const ANGLE_SPEED = 0.03; // Radians per frame (adjust for sensitivity)
+  const POWER_SPEED = 2.0; // Power units per frame
+
+  // Handle left/right arrow keys for turret rotation
+  if (keys.left) {
+    currentTank.angle -= ANGLE_SPEED;
+  }
+  if (keys.right) {
+    currentTank.angle += ANGLE_SPEED;
+  }
+
+  // Handle up/down arrow keys for power adjustment
+  if (keys.up) {
+    currentTank.power = Math.min(100, currentTank.power + POWER_SPEED);
+  }
+  if (keys.down) {
+    currentTank.power = Math.max(10, currentTank.power - POWER_SPEED);
+  }
+
+  // Clamp angle to reasonable firing range (upwards directions)
+  // Allow from Pi to 2 Pi
+  currentTank.angle = Math.max(
+    Math.PI,
+    Math.min(2 * Math.PI, currentTank.angle)
+  );
+
+  // Handle space key for firing
+  if (keyPressed.space) {
+    keyPressed.space = false; // Reset the press flag
+
+    // Fire missile from current tank
+    Missiles.fireMissileFromTank(simState, simState.currentTankIndex);
+
+    // Move to missiles phase
+    simState.phase = 'missiles';
+  }
 }
 
 /**
@@ -163,6 +363,9 @@ function render(
   Tanks.render(simState, ctx);
   Missiles.render(simState, ctx);
   Explosions.render(simState, ctx);
+
+  // Render HUD last so it appears on top
+  HUD.render(simState, ctx);
 
   // Draw phase indicator for debugging
   if (DEBUG) {
@@ -193,6 +396,9 @@ function render(
     );
     if (simState.phase === 'explosions') {
       ctx.fillText(`Explosion Time: ${simState.explosionDuration}`, 10, 120);
+    }
+    if (simState.phase === 'control') {
+      ctx.fillText(`Controls: ← → to aim, SPACE to fire`, 10, 140);
     }
     ctx.restore();
   }
