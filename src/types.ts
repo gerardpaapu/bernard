@@ -4,7 +4,12 @@ export const HEIGHT = 768 / 2;
 export const DEBUG = false; // Set to true to show debug information
 
 // Simulation phases
-export type SimulationPhase = 'missiles' | 'explosions' | 'sand' | 'idle';
+export type SimulationPhase =
+  | 'missiles'
+  | 'explosions'
+  | 'sand'
+  | 'tanks'
+  | 'idle';
 
 export interface Missile {
   x: number;
@@ -20,6 +25,13 @@ export interface Explosion {
   radius: number;
 }
 
+export interface Tank {
+  x: number; // X position
+  y: number; // Y position (starts negative, above the visible area)
+  angle: number; // Angle in radians that the turret is pointing
+  color: string; // CSS color string for the tank
+}
+
 export interface SimulationState {
   phase: SimulationPhase;
   missiles: Missile[];
@@ -27,4 +39,6 @@ export interface SimulationState {
   explosionDuration: number; // Number of frames to show the explosion
   wind: number; // Wind strength (positive = right, negative = left)
   sand: Uint8Array;
+  tanks: Tank[]; // Array of tanks in the simulation
+  currentTankIndex?: number; // Index of the tank whose turn it is currently
 }

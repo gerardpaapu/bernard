@@ -75,62 +75,60 @@ export function render(
   ctx.restore();
 }
 
+const SAND = 255;
+const EMPTY = 0;
+
 /**
  * Update the sand simulation by applying gravity rules
  */
 function updateSand(state: Uint8Array): boolean {
   let changed = false;
+  const next = new Uint8Array(state.length);
+  next.fill(0);
+
+  function get(x: number, y: number): number {
+    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+      return SAND;
+    }
+    return state[y * WIDTH + x];
+  }
+
+  function set(x: number, y: number, v: number) {
+    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+      return;
+    }
+
+    next[y * WIDTH + x] = v;
+  }
 
   // Update the state of the application
   for (let y = HEIGHT - 1; y >= 0; y--) {
     for (let x = 0; x < WIDTH; x++) {
-      const up = y > 0 ? state[(y - 1) * WIDTH + x] : 0;
-      const left = x > 0 ? state[y * WIDTH + (x - 1)] : 1;
-      const middle = state[y * WIDTH + x];
-      const right = x < WIDTH - 1 ? state[y * WIDTH + (x + 1)] : 1;
-
-      if (!up) {
-        // there's no sand above us
+      if (get(x, y) === EMPTY) {
+        set(x, y, EMPTY);
         continue;
       }
 
-      if (left && middle && right) {
-        // there's sand above us but it can't move
+      if (get(x, y + 1) === EMPTY) {
+        set(x, y + 1, SAND);
+        set(x, y, EMPTY);
+        changed = true;
         continue;
       }
 
-      changed = true;
-      // we're sand and we're falling straight down
-      if (!middle) {
-        state[(y - 1) * WIDTH + x] = 0;
-        state[y * WIDTH + x] = 255;
+      const dx = y % 2 === 0 ? -1 : 1;
+      if (get(x + dx, y + 1) === EMPTY) {
+        set(x + dx, y + 1, SAND);
+        set(x, y, EMPTY);
+        changed = true;
         continue;
       }
 
-      if (!(left || right)) {
-        state[(y - 1) * WIDTH + x] = 0;
-        if (x % 2 !== 0) {
-          state[y * WIDTH + (x - 1)] = 255;
-          x -= 2;
-        } else {
-          state[y * WIDTH + (x + 1)] = 255;
-        }
-        continue;
-      }
-      // we're sand and we're falling left
-      if (!left) {
-        state[(y - 1) * WIDTH + x] = 0;
-        state[y * WIDTH + (x - 1)] = 255;
-        x -= 2;
-        continue;
-      }
-      if (!right) {
-        state[(y - 1) * WIDTH + x] = 0;
-        state[y * WIDTH + (x + 1)] = 255;
-        continue;
-      }
+      set(x, y, SAND);
     }
   }
+
+  state.set(next);
 
   return changed;
 }

@@ -141,6 +141,48 @@ export function generateRandomMissiles(state: SimulationState): void {
 }
 
 /**
+ * Fire a missile from a tank in the direction its turret is pointing
+ * @param state The simulation state
+ * @param tankIndex The index of the tank to fire from
+ */
+export function fireMissileFromTank(
+  state: SimulationState,
+  tankIndex: number
+): void {
+  if (!state.tanks || tankIndex >= state.tanks.length || tankIndex < 0) {
+    return; // Invalid tank index
+  }
+  const tank = state.tanks[tankIndex];
+  tank.angle = Math.random() * Math.PI + Math.PI; // Randomize angle for the tank
+  const angle = tank.angle;
+
+  // Calculate the initial position of the missile (just outside the tank's radius)
+  // Position the missile at the end of the turret
+  const turretLength = 15; // Should match TURRET_LENGTH in tanks.ts
+
+  // Position the missile at the end of the turret
+  const missileX = tank.x + Math.cos(angle) * (turretLength + 2);
+  const missileY = tank.y + Math.sin(angle) * (turretLength + 2);
+
+  // Calculate the initial velocity components
+  const missileSpeed = 5.0; // Base missile speed
+  const vx = Math.cos(angle) * missileSpeed;
+  const vy = Math.sin(angle) * missileSpeed;
+
+  // Random explosion radius
+  const explosionRadius = Math.random() * 60 + 10; // 10 to 70 pixels
+
+  // Add the missile to the simulation state
+  state.missiles.push({
+    x: missileX,
+    y: missileY,
+    vx,
+    vy,
+    explosionRadius,
+  });
+}
+
+/**
  * Update missile positions and check for collisions
  */
 function updateMissiles(state: SimulationState): boolean {
